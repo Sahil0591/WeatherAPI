@@ -142,6 +142,13 @@ def import_meteostat(
     if not hasattr(ms, "stations"):
         raise ImportError("Unsupported Meteostat version: stations API not found")
 
+    def _iter_chunks(start_dt: dt.datetime, end_dt: dt.datetime, days: int = 30):
+        cur = start_dt
+        while cur < end_dt:
+            nxt = min(end_dt, cur + dt.timedelta(days=days))
+            yield cur, nxt
+            cur = nxt
+
     def fetch_hourly_df(station_id: str, start_dt: dt.datetime, end_dt: dt.datetime) -> pd.DataFrame:
         h = ms.hourly(station_id, start_dt, end_dt, timezone="UTC")
         df = h.fetch() if hasattr(h, "fetch") else h
@@ -171,16 +178,27 @@ def import_meteostat(
             print(f"[{loc.id} {loc.name}] No station found near ({loc.lat}, {loc.lon}).")
             continue
 
-        # Fetch hourly data in UTC using a compatible API
-        data = fetch_hourly_df(station_id, start, end)
-        raw = meteostat_hourly_to_raw(data)
-        if raw.empty:
+        total = 0
+        imported_min = None
+        imported_max = None
+
+        # Large ranges: fetch in 30-day chunks to keep memory and API responses manageable
+        for chunk_start, chunk_end in _iter_chunks(start, end, days=30):
+            data = fetch_hourly_df(station_id, chunk_start, chunk_end)
+            raw = meteostat_hourly_to_raw(data)
+            if raw.empty:
+                continue
+            n = upsert_hourly_observations(engine, raw, location_id=loc.id)
+            total += int(n)
+            imported_min = raw.index.min() if imported_min is None else min(imported_min, raw.index.min())
+            imported_max = raw.index.max() if imported_max is None else max(imported_max, raw.index.max())
+
+        if total == 0:
             print(f"[{loc.id} {loc.name}] Station {station_id}: No data to import.")
             continue
-        n = upsert_hourly_observations(engine, raw, location_id=loc.id)
         print(
-            f"[{loc.id} {loc.name}] Station {station_id}: Imported {n} rows "
-            f"from {raw.index.min()} to {raw.index.max()}"
+            f"[{loc.id} {loc.name}] Station {station_id}: Imported {total} rows "
+            f"from {imported_min} to {imported_max}"
         )
 
 

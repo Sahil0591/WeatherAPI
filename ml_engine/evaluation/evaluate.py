@@ -70,6 +70,23 @@ def compute_labels(df: pd.DataFrame, horizon_steps: int) -> Tuple[pd.Series, pd.
     return y_reg, y_clf
 
 
+def compute_labels_by_location(df: pd.DataFrame, horizon_steps: int) -> Tuple[pd.Series, pd.Series]:
+    """Compute labels per-location to avoid leakage across interleaved locations."""
+    if "location_id" not in df.columns:
+        return compute_labels(df, horizon_steps)
+
+    y_reg_parts = []
+    y_clf_parts = []
+    for _, grp in df.groupby("location_id"):
+        y_reg_loc = grp["precip_mm"].shift(-horizon_steps).astype(float)
+        y_clf_loc = (y_reg_loc > 0.0).astype(int)
+        y_reg_parts.append(y_reg_loc)
+        y_clf_parts.append(y_clf_loc)
+    y_reg = pd.concat(y_reg_parts).sort_index()
+    y_clf = pd.concat(y_clf_parts).sort_index()
+    return y_reg, y_clf
+
+
 def brier_score(y_true: pd.Series, y_prob: pd.Series) -> float:
     """Compute Brier score for binary outcomes.
 
@@ -115,7 +132,7 @@ def evaluate_metrics(
         Metrics dictionary with baseline and optional model metrics.
     """
     # Compute labels
-    y_reg, y_clf = compute_labels(df, horizon_steps)
+    y_reg, y_clf = compute_labels_by_location(df, horizon_steps)
 
     # Align and drop rows with NaNs introduced by shifting/rolling
     aligned = pd.DataFrame({

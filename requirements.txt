@@ -7,7 +7,7 @@ pytest>=7.4.0
 httpx>=0.25.0
 
 # Core runtime
-pandas>=2.0,<2.1
+pandas>=2.1,<3
 numpy>=1.26,<2.0
 requests>=2.31
 # (Let requests pin urllib3; remove explicit urllib3)

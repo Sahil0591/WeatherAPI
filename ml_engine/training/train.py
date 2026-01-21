@@ -14,20 +14,8 @@ import pandas as pd
 from sqlalchemy import select, and_, create_engine
 from sqlalchemy.orm import Session
 
-# Optional model backends
-try:
-    import lightgbm as lgb  # type: ignore
-except Exception:  # pragma: no cover
-    lgb = None
-
-try:
-    import xgboost as xgb  # type: ignore
-except Exception:  # pragma: no cover
-    xgb = None
-
 from sklearn.ensemble import GradientBoostingClassifier, GradientBoostingRegressor
 from sklearn.metrics import accuracy_score, roc_auc_score, mean_absolute_error, mean_squared_error
-from sklearn.preprocessing import StandardScaler
 import joblib
 
 from ml_engine.features.build_features import build_features
@@ -131,31 +119,29 @@ def _build_supervised(df: pd.DataFrame, horizon_min: int) -> Tuple[pd.DataFrame,
 
 
 def _time_split(X: pd.DataFrame, y: pd.Series, valid_fraction: float) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-    """Split by time order to avoid leakage."""
+    """Split by timestamp (not random), to avoid leakage."""
     n = len(X)
-    if n < 10:
-        # Minimal split for tiny datasets
-        split = max(1, int(n * (1 - valid_fraction)))
-    else:
-        split = int(n * (1 - valid_fraction))
-    X_tr, X_va = X.iloc[:split], X.iloc[split:]
-    y_tr, y_va = y.iloc[:split], y.iloc[split:]
+    if n == 0:
+        return X, X, y, y
+
+    # Choose a cutoff timestamp based on sorted index
+    idx_sorted = X.index.sort_values()
+    split_idx = max(1, int(n * (1 - valid_fraction)))
+    split_idx = min(split_idx, n - 1) if n > 1 else 0
+    cutoff = idx_sorted[split_idx]
+
+    train_mask = X.index <= cutoff
+    valid_mask = ~train_mask
+    X_tr, X_va = X.loc[train_mask], X.loc[valid_mask]
+    y_tr, y_va = y.loc[train_mask], y.loc[valid_mask]
     return X_tr, X_va, y_tr, y_va
 
 
 def _choose_classifier():
-    if lgb is not None:
-        return lgb.LGBMClassifier(random_state=42)
-    if xgb is not None:
-        return xgb.XGBClassifier(random_state=42, n_estimators=200, max_depth=4, learning_rate=0.1)
     return GradientBoostingClassifier(random_state=42)
 
 
 def _choose_regressor():
-    if lgb is not None:
-        return lgb.LGBMRegressor(random_state=42)
-    if xgb is not None:
-        return xgb.XGBRegressor(random_state=42, n_estimators=300, max_depth=4, learning_rate=0.1)
     return GradientBoostingRegressor(random_state=42)
 
 
@@ -180,17 +166,12 @@ def train_models(cfg: TrainConfig) -> dict:
     Xc_tr, Xc_va, yc_tr, yc_va = _time_split(X, y_clf, cfg.valid_fraction)
     logging.info(f"Train size (clf): {len(Xc_tr)} | Valid size (clf): {len(Xc_va)}")
 
-    # Scale features for tree models generally not needed, but safe for GBM fallback
-    scaler = StandardScaler(with_mean=False)
-    Xc_tr_s = scaler.fit_transform(Xc_tr)
-    Xc_va_s = scaler.transform(Xc_va)
-
     clf = _choose_classifier()
-    clf.fit(Xc_tr_s, yc_tr)
-    yc_pred = clf.predict(Xc_va_s)
+    clf.fit(Xc_tr, yc_tr)
+    yc_pred = clf.predict(Xc_va)
     yc_proba = None
     try:
-        yc_proba = clf.predict_proba(Xc_va_s)[:, 1]
+        yc_proba = clf.predict_proba(Xc_va)[:, 1]
     except Exception:
         pass
 
@@ -203,13 +184,10 @@ def train_models(cfg: TrainConfig) -> dict:
     Xr_va = Xc_va[rain_mask_va]
     yr_va = y_reg.iloc[len(Xc_tr) :][rain_mask_va]
 
-    Xr_tr_s = scaler.fit_transform(Xr_tr) if len(Xr_tr) else Xr_tr
-    Xr_va_s = scaler.transform(Xr_va) if len(Xr_tr) else Xr_va
-
     reg = _choose_regressor()
     if len(Xr_tr):
-        reg.fit(Xr_tr_s, yr_tr)
-        yr_pred = reg.predict(Xr_va_s) if len(Xr_va) else np.array([])
+        reg.fit(Xr_tr, yr_tr)
+        yr_pred = reg.predict(Xr_va) if len(Xr_va) else np.array([])
     else:
         yr_pred = np.array([])
 
@@ -234,8 +212,8 @@ def train_models(cfg: TrainConfig) -> dict:
     joblib.dump(reg, reg_path)
 
     # Build rich metadata per requirements
-    model_version = dt.datetime.now(dt.timezone.utc).date().isoformat()
     created_at_utc = dt.datetime.now(dt.timezone.utc).isoformat()
+    model_version = created_at_utc
     raw_required = ["temp_c", "humidity", "pressure_hpa", "wind_ms", "precip_mm"]
     raw_optional = ["wind_gust_ms", "cloud_cover"]
     raw_columns_expected = [c for c in raw_required + raw_optional if c in raw.columns]
