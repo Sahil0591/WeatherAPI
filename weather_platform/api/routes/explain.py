@@ -1,30 +1,58 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException, Query
 
 import structlog
-from ...schemas.explain import ExplainRequest, ExplainResponse
-from ...services.data_service import DataService
-from ...services.feature_service import FeatureService
-from ...services.model_service import ModelService
+from ...schemas.nowcast import ExplainResponse
 
 router = APIRouter()
 logger = structlog.get_logger()
 
 
-@router.post("/", response_model=ExplainResponse)
-def explain(request: Request, payload: ExplainRequest) -> ExplainResponse:
-    settings = request.app.state.settings
+@router.get(
+    "/",
+    response_model=ExplainResponse,
+    summary="Explain nowcast",
+    responses={
+        200: {
+            "description": "Explanation summary and top factors",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "summary": "Top drivers for rain probability",
+                        "top_factors": [
+                            {"name": "precip_lag_1h", "contribution": 0.42},
+                            {"name": "humidity_mean_3h", "contribution": 0.31},
+                        ],
+                    }
+                }
+            },
+        },
+        503: {"description": "Service unavailable"},
+    },
+)
+def explain(
+    request: Request,
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    minutes: int = Query(60, gt=0),
+) -> ExplainResponse:
+    if getattr(request.app.state, "model_load_error", None):
+        raise HTTPException(status_code=503, detail=f"Model not loaded: {request.app.state.model_load_error}")
 
-    data_service = DataService(settings)
-    feature_service = FeatureService(data_service)
-    model_service = ModelService(settings)
+    data_service = request.app.state.data_service
+    feature_service = request.app.state.feature_service
+    model_service = request.app.state.model_service
 
-    features = feature_service.build_features(payload)
-    details = model_service.explain(features)
+    try:
+        raw_df = data_service.fetch_recent_observations(lat=lat, lon=lon, hours=72)
+        _ = feature_service.build_features(raw_df)
+        out = model_service.explain(raw_df, minutes)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("explain_failed", error=str(e))
+        raise HTTPException(status_code=503, detail="Explanation service unavailable")
 
-    logger.info("explain_generated", location=payload.location)
-
-    return ExplainResponse(
-        location=payload.location,
-        timestamp=str(features.get("timestamp")),
-        top_features=details["top_features"],
-    )
+    return ExplainResponse(summary=out.get("summary", ""), top_factors=[
+        {"name": f.get("feature") or f.get("name"), "contribution": float(f.get("strength", 0.0)) if "strength" in f else float(f.get("contribution", 0.0))}
+        for f in out.get("top_factors", [])
+    ])

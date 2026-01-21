@@ -7,8 +7,7 @@ def test_nowcast_basic():
     app = create_app()
     client = TestClient(app)
 
-    payload = {"lat": 40.7128, "lon": -74.0060, "horizons_min": [30, 60]}
-    resp = client.post("/nowcast/", json=payload)
+    resp = client.get("/v1/nowcast/", params={"lat": 40.7128, "lon": -74.0060, "h": [30, 60]})
     assert resp.status_code == 200
     data = resp.json()
 
@@ -17,7 +16,6 @@ def test_nowcast_basic():
     assert "predictions" in data and isinstance(data["predictions"], list)
     assert len(data["predictions"]) == 2
 
-    # Check prediction fields
     pred = data["predictions"][0]
     assert "minutes" in pred and pred["minutes"] > 0
     assert 0.0 <= pred["p_rain"] <= 1.0

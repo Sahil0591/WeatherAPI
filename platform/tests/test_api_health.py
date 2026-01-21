@@ -1,9 +1,9 @@
 from fastapi.testclient import TestClient
 
-from weather_platform.api.main import create_app
+from platform.api.main import create_app
 
 
-def test_health():
+def test_health_returns_ok_and_version():
     app = create_app()
     client = TestClient(app)
 
@@ -11,5 +11,5 @@ def test_health():
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "ok"
-    assert "uptime_s" in data and data["uptime_s"] >= 0
-    assert "version" in data
+    assert data["uptime_s"] >= 0
+    assert isinstance(data["version"], str)

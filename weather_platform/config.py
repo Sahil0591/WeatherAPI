@@ -5,6 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class AppSettings(BaseSettings):
     app_name: str = "WeatherAPI"
+    app_version: str = "0.1.0"
     app_env: str = "development"
     log_level: str = "INFO"
     host: str = "0.0.0.0"
