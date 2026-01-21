@@ -44,7 +44,8 @@ class TestOpenMeteoClient(unittest.TestCase):
         df = client.fetch_hourly(52.52, 13.405, start, end)
 
         self.assertIsInstance(df, pd.DataFrame)
-        self.assertTrue(pd.api.types.is_datetime64tz_dtype(df.index))
+        # pandas >=2.1 deprecates is_datetime64tz_dtype
+        self.assertTrue(isinstance(df.index.dtype, pd.DatetimeTZDtype))
         self.assertListEqual(list(df.columns), [
             "temp_c",
             "humidity",

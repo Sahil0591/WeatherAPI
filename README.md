@@ -36,3 +36,37 @@ Then visit:
 ```
 
 Note: The project uses a package named `weather_platform` to avoid shadowing Python's stdlib module `platform`. If you previously had a top-level folder named `platform`, remove it or avoid running `pip` from that directory to prevent import conflicts.
+
+## ML Pipeline (Import → Train → Verify → Evaluate)
+
+Run these commands from the repository root.
+
+- Import Meteostat data into SQLite:
+
+```powershell
+python -m ml_engine.ingestion.import_meteostat --db-url "sqlite:///stormcast.db" --start "2024-01-01" --end "2024-01-10"
+```
+
+- Train models from the DB (time-based split, past-only features):
+
+```powershell
+python -m ml_engine.training.train --db-url "sqlite:///stormcast.db" --location-ids "1,2,3,4,5" --start "2024-01-01T00:00:00Z" --end "2024-01-10T00:00:00Z" --artifacts-dir "ml_engine/artifacts"
+```
+
+- Verify artifacts and metadata:
+
+```powershell
+python -m ml_engine.artifacts.verify_artifacts --artifacts-dir "ml_engine/artifacts"
+```
+
+- Evaluate baselines on the same DB window (writes metrics + markdown report):
+
+```powershell
+python -m ml_engine.evaluation.evaluate --db-url "sqlite:///stormcast.db" --location-ids "1,2,3,4,5" --start "2024-01-01T00:00:00Z" --end "2024-01-10T00:00:00Z" --horizon 60 --md-path "docs/ml_report.md" --json-path "ml_engine/artifacts/metrics.json"
+```
+
+- Run tests:
+
+```powershell
+python -m pytest ml_engine/tests -v
+```

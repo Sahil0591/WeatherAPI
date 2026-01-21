@@ -7,7 +7,7 @@ import math
 import os
 from dataclasses import dataclass
 import logging
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Dict
 
 import numpy as np
 import pandas as pd
@@ -90,7 +90,10 @@ def _load_observations(db_url: str, location_ids: Iterable[int], start_dt: dt.da
 
 
 def _build_supervised(df: pd.DataFrame, horizon_min: int) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:
-    """Create feature matrix and labels shifted forward by horizon.
+    """Create feature matrix and labels per-location with future shift.
+
+    Ensures no leakage across locations by computing features and labels
+    independently for each `location_id`, then concatenating.
 
     Returns
     -------
@@ -103,22 +106,27 @@ def _build_supervised(df: pd.DataFrame, horizon_min: int) -> Tuple[pd.DataFrame,
     """
     horizon_steps = _ceil_hours(horizon_min)
 
-    # Build historical features from raw df
-    feats = build_features(df)
+    parts: List[pd.DataFrame] = []
+    feature_cols: List[str] = []
+    for loc_id, grp in df.groupby("location_id"):
+        base = grp.drop(columns=[c for c in ["location_id"] if c in grp.columns])
+        feats = build_features(base)
+        if not feature_cols:
+            feature_cols = list(feats.columns)
+        # Future labels per location
+        y_future = base["precip_mm"].shift(-horizon_steps)
+        aligned = pd.concat(
+            [feats, (y_future > 0.0).astype(int).rename("y_clf"), y_future.astype(float).rename("y_reg")],
+            axis=1,
+        )
+        aligned["location_id"] = loc_id
+        parts.append(aligned)
 
-    # Future labels: shift negative to align future target at current time
-    y_future = df["precip_mm"].shift(-horizon_steps)
-    y_clf = (y_future > 0.0).astype(int)
-    y_reg = y_future.astype(float)
-
-    # Align and drop rows with NA labels or NA features
-    aligned = pd.concat([feats, y_clf.rename("y_clf"), y_reg.rename("y_reg"), df[["location_id"]]], axis=1)
-    aligned = aligned.dropna(subset=["y_clf", "y_reg"]).copy()
-
-    # Fill feature NaNs caused by rolling windows
-    X = aligned[feats.columns].fillna(0.0)
-    y_clf = aligned["y_clf"].astype(int)
-    y_reg = aligned["y_reg"].astype(float)
+    all_aligned = pd.concat(parts).sort_index()
+    all_aligned = all_aligned.dropna(subset=["y_clf", "y_reg"]).copy()
+    X = all_aligned[feature_cols].fillna(0.0)
+    y_clf = all_aligned["y_clf"].astype(int)
+    y_reg = all_aligned["y_reg"].astype(float)
     return X, y_clf, y_reg
 
 
@@ -160,14 +168,17 @@ def train_models(cfg: TrainConfig) -> dict:
     Returns metadata including features, period, and metrics.
     """
     raw = _load_observations(cfg.db_url, cfg.location_ids, cfg.start_dt, cfg.end_dt)
+    logging.info(f"Loaded rows: {len(raw)} across {len(set(raw['location_id']))} locations")
 
     # For hourly data, use the largest mapping horizon (e.g., 2h for 120 minutes)
     horizon_min = max(cfg.horizons_min)
 
     X, y_clf, y_reg = _build_supervised(raw, horizon_min)
+    logging.info(f"Rows after feature engineering/alignment: {len(X)}")
 
     # Split by time
     Xc_tr, Xc_va, yc_tr, yc_va = _time_split(X, y_clf, cfg.valid_fraction)
+    logging.info(f"Train size (clf): {len(Xc_tr)} | Valid size (clf): {len(Xc_va)}")
 
     # Scale features for tree models generally not needed, but safe for GBM fallback
     scaler = StandardScaler(with_mean=False)
@@ -203,13 +214,16 @@ def train_models(cfg: TrainConfig) -> dict:
         yr_pred = np.array([])
 
     # Metrics
+    # Compute RMSE via sqrt(MSE) for broader compatibility
+    mse_val = float(mean_squared_error(yr_va, yr_pred)) if len(yr_va) and len(yr_pred) else float("nan")
     metrics = {
         "clf_accuracy": float(accuracy_score(yc_va, yc_pred)) if len(yc_va) else float("nan"),
         "clf_roc_auc": float(roc_auc_score(yc_va, yc_proba)) if (yc_proba is not None and len(yc_va) >= 2 and len(set(yc_va)) > 1) else float("nan"),
         "reg_mae_raining": float(mean_absolute_error(yr_va, yr_pred)) if len(yr_va) and len(yr_pred) else float("nan"),
-        "reg_rmse_raining": float(mean_squared_error(yr_va, yr_pred, squared=False)) if len(yr_va) and len(yr_pred) else float("nan"),
+        "reg_rmse_raining": (mse_val ** 0.5) if not np.isnan(mse_val) else float("nan"),
         "horizon_minutes": horizon_min,
     }
+    logging.info(f"Validation metrics: {metrics}")
 
     # Save artifacts
     os.makedirs(cfg.artifacts_dir, exist_ok=True)

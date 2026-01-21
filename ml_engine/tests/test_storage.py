@@ -54,7 +54,8 @@ class TestStorage(unittest.TestCase):
 
         out = read_recent_observations(engine, location_id=1, hours_back=48)
         self.assertEqual(len(out), 3)
-        self.assertTrue(pd.api.types.is_datetime64tz_dtype(out.index))
+        # pandas >=2.1 deprecates is_datetime64tz_dtype
+        self.assertTrue(isinstance(out.index.dtype, pd.DatetimeTZDtype))
         for col in ["temp_c", "humidity", "pressure_hpa", "wind_ms", "precip_mm"]:
             self.assertIn(col, out.columns)
         # Optional columns exist with NaN values

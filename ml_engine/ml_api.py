@@ -19,14 +19,21 @@ def _ceil_hours(minutes: int) -> int:
     return max(1, math.ceil(minutes / 60))
 
 
-def _get_proba(model: Any, x_row: np.ndarray) -> float:
+def _get_proba(model: Any, x_row: np.ndarray, feature_columns: Optional[List[str]] = None) -> float:
     """Return probability of rain for classifiers; robust fallback.
 
     Tries predict_proba if available, else decision_function mapped via sigmoid,
     else returns 0/1 from predict.
     """
+    X_in: Any = x_row.reshape(1, -1)
+    if feature_columns is not None and hasattr(model, "feature_names_in_"):
+        try:
+            X_in = pd.DataFrame([x_row], columns=feature_columns)
+        except Exception:
+            X_in = x_row.reshape(1, -1)
+
     try:
-        proba = model.predict_proba(x_row.reshape(1, -1))
+        proba = model.predict_proba(X_in)
         if proba.ndim == 2:
             if proba.shape[1] >= 2:
                 return float(proba[0, 1])
@@ -35,13 +42,13 @@ def _get_proba(model: Any, x_row: np.ndarray) -> float:
     except Exception:
         pass
     try:
-        val = model.decision_function(x_row.reshape(1, -1))
+        val = model.decision_function(X_in)
         val = float(np.asarray(val).ravel()[0])
         return float(1.0 / (1.0 + math.exp(-val)))
     except Exception:
         pass
     try:
-        pred = model.predict(x_row.reshape(1, -1))
+        pred = model.predict(X_in)
         pred = float(np.asarray(pred).ravel()[0])
         # If classifier returns 0/1, treat 1 as high probability
         return 1.0 if pred >= 1.0 else 0.0
@@ -113,7 +120,7 @@ class StormcastModel:
             model_version=model_version,
         )
 
-    def _prepare_row(self, features_df: pd.DataFrame) -> np.ndarray:
+    def _prepare_row(self, features_df: pd.DataFrame) -> pd.Series:
         """Select and order features for the latest row, filling NaNs with zeros."""
         if features_df is None or features_df.empty:
             raise ValueError("features_df must be a non-empty DataFrame")
@@ -122,7 +129,7 @@ class StormcastModel:
             raise ValueError(f"Missing required feature columns for inference: {missing}")
         X = features_df.iloc[-1][self.feature_columns]
         X = X.astype(float).fillna(0.0)
-        return X.values
+        return X
 
     def predict(self, raw_df: pd.DataFrame, horizons_min: List[int]) -> Dict[str, Any]:
         """Predict rain probability and amounts for requested horizons.
@@ -143,8 +150,16 @@ class StormcastModel:
         feats_df = build_features(raw_df)
         x_row = self._prepare_row(feats_df)
 
-        p = _get_proba(self.clf, x_row)
-        amt = float(np.asarray(self.reg.predict(x_row.reshape(1, -1))).ravel()[0])
+        x_arr = x_row.values.astype(float)
+        p = _get_proba(self.clf, x_arr, feature_columns=self.feature_columns)
+
+        X_reg_in: Any = x_arr.reshape(1, -1)
+        if hasattr(self.reg, "feature_names_in_"):
+            try:
+                X_reg_in = pd.DataFrame([x_arr], columns=self.feature_columns)
+            except Exception:
+                X_reg_in = x_arr.reshape(1, -1)
+        amt = float(np.asarray(self.reg.predict(X_reg_in)).ravel()[0])
 
         # Heuristic bounds using RMSE estimate when available; otherwise proportional
         rmse = None
@@ -191,12 +206,7 @@ class StormcastModel:
         """
         # Explain classification probability by default
         feats_df = build_features(raw_df)
-        x_row_series = pd.Series(self._prepare_row(feats_df), index=self.feature_columns)
-        try:
-            # Attach feature names for certain libraries
-            setattr(self.clf, "feature_names_in_", np.array(self.feature_columns))
-        except Exception:
-            pass
+        x_row_series = self._prepare_row(feats_df)
         result = explain_prediction(self.clf, x_row_series, top_k=top_k)
         # Include horizon info in summary
         result["summary"] = result.get("summary", "") + f" | horizon_minutes={minutes}"

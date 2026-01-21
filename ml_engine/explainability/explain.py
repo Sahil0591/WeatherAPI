@@ -30,24 +30,30 @@ def _as_row_array(X_row: Any) -> np.ndarray:
     return arr
 
 
-def _predict_scalar(model: Any, x_row: np.ndarray) -> float:
+def _predict_scalar(model: Any, x_row: np.ndarray, feature_names: Optional[Sequence[str]] = None) -> float:
     # Classification probability of positive class if available; else decision_function/predict
+    X_in: Any = x_row.reshape(1, -1)
+    if feature_names is not None and hasattr(model, "feature_names_in_"):
+        try:
+            X_in = pd.DataFrame([x_row], columns=[str(c) for c in feature_names])
+        except Exception:
+            X_in = x_row.reshape(1, -1)
     try:
-        proba = model.predict_proba(x_row.reshape(1, -1))
+        proba = model.predict_proba(X_in)
         if proba.ndim == 2 and proba.shape[1] >= 2:
             return float(proba[0, 1])
         return float(proba[0, -1])
     except Exception:
         pass
     try:
-        val = model.decision_function(x_row.reshape(1, -1))
+        val = model.decision_function(X_in)
         if isinstance(val, (list, tuple, np.ndarray)):
             val = np.asarray(val).ravel()[0]
         return float(val)
     except Exception:
         pass
     # Regression fallback
-    pred = model.predict(x_row.reshape(1, -1))
+    pred = model.predict(X_in)
     if isinstance(pred, (list, tuple, np.ndarray)):
         pred = np.asarray(pred).ravel()[0]
     return float(pred)
@@ -110,12 +116,12 @@ def explain_prediction(
 
     if contributions is None:
         # Fallback: local finite differences around X_row
-        base = _predict_scalar(model, x)
+        base = _predict_scalar(model, x, feature_names=names)
         contributions = np.zeros_like(x, dtype=float)
         for i in range(x.shape[0]):
             x_eps = x.copy()
             x_eps[i] = x_eps[i] + epsilon
-            pred_eps = _predict_scalar(model, x_eps)
+            pred_eps = _predict_scalar(model, x_eps, feature_names=names)
             delta = pred_eps - base
             contributions[i] = delta  # absolute per-feature change for epsilon step
 

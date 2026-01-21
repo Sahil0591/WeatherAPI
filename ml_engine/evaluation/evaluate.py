@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import os
 import json
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, Iterable, List
 
 import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score, mean_absolute_error, mean_squared_error
 import matplotlib.pyplot as plt
+from sqlalchemy import select, and_, create_engine
+from sqlalchemy.orm import Session
+
+from ml_engine.ingestion.models import Observation
 
 
 def persistence_baseline(df: pd.DataFrame) -> pd.Series:
@@ -274,6 +278,80 @@ def evaluate_and_save(
     metrics = evaluate_metrics(df, horizon_steps, y_pred_clf_proba=y_pred_clf_proba, y_pred_reg=y_pred_reg)
     save_report(metrics, md_path=md_path, json_path=json_path)
     return metrics
+
+
+def _ceil_hours(minutes: int) -> int:
+    return max(1, int(np.ceil(minutes / 60)))
+
+
+def _load_observations(db_url: str, location_ids: Iterable[int], start_dt, end_dt) -> pd.DataFrame:
+    engine = create_engine(db_url, future=True)
+    with Session(engine) as session:
+        cond = and_(
+            Observation.location_id.in_(list(location_ids)),
+            Observation.ts_utc >= start_dt,
+            Observation.ts_utc < end_dt,
+        )
+        rows = session.execute(select(Observation).where(cond).order_by(Observation.ts_utc)).scalars().all()
+
+    if not rows:
+        raise ValueError("No observations found for given parameters.")
+
+    idx = pd.to_datetime([r.ts_utc for r in rows], utc=True)
+    df = pd.DataFrame(
+        {
+            "temp_c": [r.temp_c for r in rows],
+            "humidity": [r.humidity for r in rows],
+            "pressure_hpa": [r.pressure_hpa for r in rows],
+            "wind_ms": [r.wind_ms for r in rows],
+            "precip_mm": [r.precip_mm for r in rows],
+            "wind_gust_ms": [r.wind_gust_ms for r in rows],
+            "cloud_cover": [r.cloud_cover for r in rows],
+            "location_id": [r.location_id for r in rows],
+        },
+        index=idx,
+    ).sort_index()
+    return df
+
+
+def _parse_args():
+    import argparse, datetime as dt
+    p = argparse.ArgumentParser(description="Evaluate baselines and optional model metrics")
+    p.add_argument("--db-url", required=True, help="SQLAlchemy database URL")
+    p.add_argument("--location-ids", required=True, help="Comma-separated location IDs")
+    p.add_argument("--start", required=True, help="Start datetime ISO (UTC)")
+    p.add_argument("--end", required=True, help="End datetime ISO (UTC)")
+    p.add_argument("--horizon", default="60", help="Future horizon in minutes (default 60)")
+    p.add_argument("--md-path", default="docs/ml_report.md", help="Path for markdown report")
+    p.add_argument("--json-path", default="ml_engine/artifacts/metrics.json", help="Path for JSON metrics")
+    args = p.parse_args()
+
+    location_ids = [int(x) for x in args.location_ids.split(",") if x.strip()]
+    horizon_min = int(args.horizon)
+
+    def to_utc(s: str):
+        d = pd.to_datetime(s, utc=True)
+        return d.to_pydatetime()
+
+    return (
+        args.db_url,
+        location_ids,
+        to_utc(args.start),
+        to_utc(args.end),
+        horizon_min,
+        args.md_path,
+        args.json_path,
+    )
+
+
+def main():
+    db_url, loc_ids, start_dt, end_dt, horizon_min, md_path, json_path = _parse_args()
+    df = _load_observations(db_url, loc_ids, start_dt, end_dt)
+    # Merge all locations; evaluate on the combined series by simple concat
+    # Labels are computed on the combined series which is acceptable for baseline evaluation
+    steps = _ceil_hours(horizon_min)
+    metrics = evaluate_and_save(df, steps, md_path=md_path, json_path=json_path)
+    print(json.dumps(metrics, indent=2))
 
 
 # Legacy helper to keep smoke tests working (expects callable named `evaluate`)
