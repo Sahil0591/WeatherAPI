@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -37,15 +37,16 @@ class NowcastResponse(BaseModel):
 
 @router.get("/nowcast", response_model=NowcastResponse)
 async def get_nowcast(
+    request: Request,
     lat: float = Query(..., ge=-90, le=90),
     lon: float = Query(..., ge=-180, le=180),
     horizon: int = Query(120, gt=0),
     horizons_min: Optional[List[int]] = Query(None),
 ):
-    from platform.api.main import app
-    settings = app.state.settings
-    data_service = app.state.data_service
-    model_service = app.state.model_service
+    # Access the current app instance from the request
+    settings = request.app.state.settings
+    data_service = request.app.state.data_service
+    model_service = request.app.state.model_service
 
     hs = horizons_min or [horizon]
     try:

@@ -7,6 +7,7 @@ from fastapi import Request
 from platform.services.settings import settings
 from platform.services.model_service import ModelService
 from platform.services.data_service import DataService
+from .middleware import RequestIDMiddleware, http_exception_handler, generic_exception_handler
 from .routes import health
 
 
@@ -32,6 +33,12 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def _startup() -> None:
         app.state.model_service.load()
+
+    # Middleware & exception handlers
+    app.add_middleware(RequestIDMiddleware)
+    from fastapi import HTTPException
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(Exception, generic_exception_handler)
 
     # Routers
     from .routes import nowcast, explain
