@@ -8,6 +8,7 @@ from platform.services.settings import settings
 from platform.services.model_service import ModelService
 from platform.services.data_service import DataService
 from .middleware import RequestIDMiddleware, http_exception_handler, generic_exception_handler
+from fastapi.staticfiles import StaticFiles
 from .routes import health
 
 
@@ -45,6 +46,13 @@ def create_app() -> FastAPI:
     app.include_router(health.router, prefix="/health", tags=["health"])  # GET /health
     app.include_router(nowcast.router, prefix="/v1", tags=["v1"])  # GET /v1/nowcast
     app.include_router(explain.router, prefix="/v1", tags=["v1"])  # GET /v1/explain
+
+    # Simple static UI at /ui
+    try:
+        app.mount("/ui", StaticFiles(directory="platform/web", html=True), name="ui")
+    except Exception:
+        # If directory missing, ignore mounting
+        pass
 
     return app
 
