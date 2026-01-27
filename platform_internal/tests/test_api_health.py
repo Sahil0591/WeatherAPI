@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from platform.api.main import create_app
+from platform_internal.api.main import create_app
 
 
 def test_health_returns_ok_and_version():

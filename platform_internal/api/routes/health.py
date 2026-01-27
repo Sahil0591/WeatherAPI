@@ -4,7 +4,7 @@ import time
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
-from platform.services.settings import settings
+from platform_internal.services.settings import settings
 
 
 class HealthResponse(BaseModel):

@@ -1,5 +1,5 @@
 import time
-from platform.services.cache import InMemoryCache
+from platform_internal.services.cache import InMemoryCache
 
 
 def test_inmemory_cache_set_get_and_expiry():

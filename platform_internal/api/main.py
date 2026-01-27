@@ -4,9 +4,9 @@ import time
 from fastapi import FastAPI
 from fastapi import Request
 
-from platform.services.settings import settings
-from platform.services.model_service import ModelService
-from platform.services.data_service import DataService
+from platform_internal.services.settings import settings
+from platform_internal.services.model_service import ModelService
+from platform_internal.services.data_service import DataService
 from .middleware import RequestIDMiddleware, http_exception_handler, generic_exception_handler
 from .routes import health
 
