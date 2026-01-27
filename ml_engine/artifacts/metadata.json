@@ -1,7 +1,8 @@
 {
   "model_name": "stormcast",
-  "model_version": "2026-01-27T12:29:46.644285+00:00",
-  "created_at_utc": "2026-01-27T12:29:46.644285+00:00",
+  "global_model": true,
+  "model_version": "2026-01-27T13:13:31.606921+00:00",
+  "created_at_utc": "2026-01-27T13:13:31.606921+00:00",
   "horizons_min": [
     60,
     120
@@ -31,13 +32,13 @@
     "month"
   ],
   "training_period": {
-    "start": "2023-07-01T00:00:00+00:00",
-    "end": "2024-01-10T00:00:00+00:00"
+    "start": "2022-01-01T00:00:00+00:00",
+    "end": "2026-01-27T00:00:00+00:00"
   },
   "target_definition": "rain = precip_mm > 0.0; regression target = precip_mm shifted forward by horizon steps",
   "metrics_summary": {
-    "clf_accuracy": 0.8454746136865342,
-    "clf_roc_auc": 0.8191825883201155,
+    "clf_accuracy": 0.8456449834619625,
+    "clf_roc_auc": 0.8194111929148741,
     "reg_mae_raining": 0.7400505063649273,
     "reg_rmse_raining": 0.9673654634349873,
     "horizon_minutes": 120
@@ -58,8 +59,8 @@
     "month"
   ],
   "metrics": {
-    "clf_accuracy": 0.8454746136865342,
-    "clf_roc_auc": 0.8191825883201155,
+    "clf_accuracy": 0.8456449834619625,
+    "clf_roc_auc": 0.8194111929148741,
     "reg_mae_raining": 0.7400505063649273,
     "reg_rmse_raining": 0.9673654634349873,
     "horizon_minutes": 120
