@@ -111,6 +111,15 @@ def _build_supervised(df: pd.DataFrame, horizon_min: int) -> Tuple[pd.DataFrame,
         parts.append(aligned)
 
     all_aligned = pd.concat(parts).sort_index()
+
+    # Make the index unique across pooled locations.
+    # When pooling multiple locations, timestamps repeat across locations; using a MultiIndex
+    # avoids ambiguous alignment and boolean-mask indexing errors.
+    ts_idx = pd.to_datetime(all_aligned.index, utc=True)
+    loc_idx = all_aligned["location_id"].astype(int).to_numpy()
+    all_aligned.index = pd.MultiIndex.from_arrays([ts_idx, loc_idx], names=["ts_utc", "location_id"])
+    all_aligned = all_aligned.drop(columns=["location_id"])  # now represented in the index
+
     all_aligned = all_aligned.dropna(subset=["y_clf", "y_reg"]).copy()
     X = all_aligned[feature_cols].fillna(0.0)
     y_clf = all_aligned["y_clf"].astype(int)
@@ -124,13 +133,18 @@ def _time_split(X: pd.DataFrame, y: pd.Series, valid_fraction: float) -> Tuple[p
     if n == 0:
         return X, X, y, y
 
-    # Choose a cutoff timestamp based on sorted index
-    idx_sorted = X.index.sort_values()
+    # Choose a cutoff timestamp based on sorted timestamps.
+    # Supports both DatetimeIndex and MultiIndex(ts_utc, location_id).
+    if isinstance(X.index, pd.MultiIndex):
+        ts_vals = pd.to_datetime(X.index.get_level_values(0), utc=True)
+    else:
+        ts_vals = pd.to_datetime(X.index, utc=True)
+    idx_sorted = ts_vals.sort_values()
     split_idx = max(1, int(n * (1 - valid_fraction)))
     split_idx = min(split_idx, n - 1) if n > 1 else 0
     cutoff = idx_sorted[split_idx]
 
-    train_mask = X.index <= cutoff
+    train_mask = ts_vals <= cutoff
     valid_mask = ~train_mask
     X_tr, X_va = X.loc[train_mask], X.loc[valid_mask]
     y_tr, y_va = y.loc[train_mask], y.loc[valid_mask]
