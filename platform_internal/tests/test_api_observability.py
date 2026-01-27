@@ -27,7 +27,7 @@ sys.modules["platform"] = _platform_local
 # Shim stdlib attribute used by third-party libs
 setattr(_platform_local, "python_implementation", _stdlib_platform.python_implementation)
 
-from platform.api.main import create_app
+from platform_internal.api.main import create_app
 
 
 def test_request_id_header_on_health():

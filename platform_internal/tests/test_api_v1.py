@@ -28,7 +28,7 @@ sys.modules["platform"] = _platform_local
 # Provide stdlib shim for attributes used by third-party libs (e.g., joblib/cloudpickle)
 setattr(_platform_local, "python_implementation", _stdlib_platform.python_implementation)
 
-from platform.api.main import create_app
+from platform_internal.api.main import create_app
 
 
 def _stub_df(n=6):
