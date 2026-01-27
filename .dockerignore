@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.tmp
+
+# Venvs
+.venv/
+venv/
+ENV/
+
+# Git
+.git/
+.gitignore
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tests and local data (optional)
+platform/tests/
+weather_platform/tests/
+ml_engine/tests/
+
+# Notebooks
+*.ipynb_checkpoints/

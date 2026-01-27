@@ -35,9 +35,6 @@ def explain(
     lon: float = Query(..., ge=-180, le=180),
     minutes: int = Query(60, gt=0),
 ) -> ExplainResponse:
-    if getattr(request.app.state, "model_load_error", None):
-        raise HTTPException(status_code=503, detail=f"Model not loaded: {request.app.state.model_load_error}")
-
     data_service = request.app.state.data_service
     feature_service = request.app.state.feature_service
     model_service = request.app.state.model_service

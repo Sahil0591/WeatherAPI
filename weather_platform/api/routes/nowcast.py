@@ -42,8 +42,6 @@ def nowcast(
     h: list[int] = Query(None, description="Optional multiple horizons in minutes (repeat parameter)"),
 ) -> NowcastResponse:
     settings = request.app.state.settings
-    if getattr(request.app.state, "model_load_error", None):
-        raise HTTPException(status_code=503, detail=f"Model not loaded: {request.app.state.model_load_error}")
 
     data_service = request.app.state.data_service
     feature_service = request.app.state.feature_service

@@ -1,3 +1,4 @@
+"""Artifacts utilities: generation and verification scripts."""
 from typing import Dict
 import json
 import os

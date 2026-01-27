@@ -3,6 +3,7 @@ from typing import Optional
 import time
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 
 from ..config import AppSettings
@@ -50,6 +51,13 @@ def create_app(settings: Optional[AppSettings] = None) -> FastAPI:
     app.state.feature_service = FeatureService(app.state.data_service)
     app.state.model_service = ModelService(settings)
     app.state.model_load_error = None
+
+    # Mount simple static UI under /ui (served from platform/web)
+    try:
+        app.mount("/ui", StaticFiles(directory="platform/web", html=True), name="ui")
+    except Exception:
+        # If directory missing, ignore mounting
+        pass
 
     return app
 

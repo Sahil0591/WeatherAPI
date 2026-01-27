@@ -1,10 +1,8 @@
 {
   "model_name": "stormcast",
-  "model_version": "2026-01-21T19:25:52.859428+00:00",
-  "created_at_utc": "2026-01-21T19:25:52.859428+00:00",
+  "model_version": "2026-01-27T12:29:46.644285+00:00",
+  "created_at_utc": "2026-01-27T12:29:46.644285+00:00",
   "horizons_min": [
-    15,
-    30,
     60,
     120
   ],
@@ -34,14 +32,14 @@
   ],
   "training_period": {
     "start": "2023-07-01T00:00:00+00:00",
-    "end": "2024-01-11T00:00:00+00:00"
+    "end": "2024-01-10T00:00:00+00:00"
   },
   "target_definition": "rain = precip_mm > 0.0; regression target = precip_mm shifted forward by horizon steps",
   "metrics_summary": {
-    "clf_accuracy": 0.8584343991179714,
-    "clf_roc_auc": 0.8761313333133793,
-    "reg_mae_raining": 0.47846711783462176,
-    "reg_rmse_raining": 0.665966398399824,
+    "clf_accuracy": 0.8454746136865342,
+    "clf_roc_auc": 0.8191825883201155,
+    "reg_mae_raining": 0.7400505063649273,
+    "reg_rmse_raining": 0.9673654634349873,
     "horizon_minutes": 120
   },
   "features": [
@@ -60,17 +58,13 @@
     "month"
   ],
   "metrics": {
-    "clf_accuracy": 0.8584343991179714,
-    "clf_roc_auc": 0.8761313333133793,
-    "reg_mae_raining": 0.47846711783462176,
-    "reg_rmse_raining": 0.665966398399824,
+    "clf_accuracy": 0.8454746136865342,
+    "clf_roc_auc": 0.8191825883201155,
+    "reg_mae_raining": 0.7400505063649273,
+    "reg_rmse_raining": 0.9673654634349873,
     "horizon_minutes": 120
   },
   "locations": [
-    1,
-    2,
-    3,
-    4,
-    5
+    1
   ]
 }
