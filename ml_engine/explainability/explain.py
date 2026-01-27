@@ -59,6 +59,64 @@ def _predict_scalar(model: Any, x_row: np.ndarray, feature_names: Optional[Seque
     return float(pred)
 
 
+def _finite_difference_contributions(
+    model: Any,
+    x: np.ndarray,
+    feature_names: Sequence[str],
+    epsilon: float,
+    max_step_multiplier: float = 1e4,
+) -> np.ndarray:
+    """Compute per-feature local sensitivity via symmetric finite differences.
+
+    Tree models (including GradientBoosting) are piecewise-constant, so very small
+    epsilons frequently yield exact zero deltas. To reduce that, this routine uses
+    an adaptive step size per feature and increases the step until the prediction
+    changes (or until a cap is reached).
+    """
+
+    contributions = np.zeros_like(x, dtype=float)
+    base = _predict_scalar(model, x, feature_names=feature_names)
+
+    for i in range(x.shape[0]):
+        # Per-feature scale: relative to magnitude, but never below 1.0
+        scale = max(1.0, float(abs(x[i])))
+        step = float(epsilon) * scale
+        if step <= 0.0 or not np.isfinite(step):
+            step = float(epsilon)
+
+        # Try progressively larger steps to cross tree thresholds
+        multiplier = 1.0
+        best_delta = 0.0
+        while multiplier <= max_step_multiplier:
+            h = step * multiplier
+
+            x_plus = x.copy()
+            x_minus = x.copy()
+            x_plus[i] = x_plus[i] + h
+            x_minus[i] = x_minus[i] - h
+
+            pred_plus = _predict_scalar(model, x_plus, feature_names=feature_names)
+            pred_minus = _predict_scalar(model, x_minus, feature_names=feature_names)
+
+            # Symmetric delta around base; robust for piecewise-constant outputs
+            delta = 0.5 * (pred_plus - pred_minus)
+            if delta != 0.0 and np.isfinite(delta):
+                best_delta = float(delta)
+                break
+
+            # If symmetric is flat, also try one-sided vs base
+            delta_one = pred_plus - base
+            if delta_one != 0.0 and np.isfinite(delta_one):
+                best_delta = float(delta_one)
+                break
+
+            multiplier *= 10.0
+
+        contributions[i] = best_delta
+
+    return contributions
+
+
 def explain_prediction(
     model: Any,
     X_row: Any,
@@ -115,15 +173,20 @@ def explain_prediction(
         used_shap = False
 
     if contributions is None:
-        # Fallback: local finite differences around X_row
-        base = _predict_scalar(model, x, feature_names=names)
-        contributions = np.zeros_like(x, dtype=float)
-        for i in range(x.shape[0]):
-            x_eps = x.copy()
-            x_eps[i] = x_eps[i] + epsilon
-            pred_eps = _predict_scalar(model, x_eps, feature_names=names)
-            delta = pred_eps - base
-            contributions[i] = delta  # absolute per-feature change for epsilon step
+        # Fallback: local finite differences around X_row (adaptive for tree models)
+        contributions = _finite_difference_contributions(model, x, names, epsilon=epsilon)
+
+        # If the model output is locally flat (common with trees), fall back to global
+        # feature importances (non-local, but avoids an all-zero explanation).
+        if np.allclose(contributions, 0.0):
+            imp = getattr(model, "feature_importances_", None)
+            if imp is not None:
+                try:
+                    imp_arr = np.asarray(imp, dtype=float).ravel()
+                    if imp_arr.shape[0] == x.shape[0] and np.any(imp_arr > 0):
+                        contributions = imp_arr
+                except Exception:
+                    pass
 
     # Sort by absolute impact
     order = np.argsort(-np.abs(contributions))
@@ -138,10 +201,9 @@ def explain_prediction(
     if used_shap:
         summary = "Explanation via SHAP TreeExplainer (top contributions by abs value)."
     else:
-        has_importances = hasattr(model, "feature_importances_")
-        summary = (
-            "Explanation via local sensitivity (finite differences)"
-            + (" with feature_importances_ available." if has_importances else ".")
-        )
+        if hasattr(model, "feature_importances_") and np.allclose(contributions, getattr(model, "feature_importances_", 0.0)):
+            summary = "Explanation via global feature_importances_ (model output locally flat for finite differences)."
+        else:
+            summary = f"Explanation via local sensitivity (adaptive finite differences, epsilon={epsilon:g})."
 
     return {"summary": summary, "top_factors": top_factors}
