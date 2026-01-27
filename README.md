@@ -47,10 +47,38 @@ Run these commands from the repository root.
 python -m ml_engine.ingestion.import_meteostat --db-url "sqlite:///stormcast.db" --start "2024-01-01" --end "2024-01-10"
 ```
 
-- Train models from the DB (time-based split, past-only features):
+- Import a wider (e.g., 6–12 month) range:
+
+```powershell
+# 6 months example
+python -m ml_engine.ingestion.import_meteostat --db-url "sqlite:///stormcast.db" --start "2025-07-01" --end "2026-01-01"
+
+# 12 months example
+python -m ml_engine.ingestion.import_meteostat --db-url "sqlite:///stormcast.db" --start "2025-01-01" --end "2026-01-01"
+```
+
+- (Optional) Import additional locations via a CSV file (columns: `id,name,lat,lon`):
+
+```powershell
+python -m ml_engine.ingestion.import_meteostat --db-url "sqlite:///stormcast.db" --start "2025-07-01" --end "2026-01-01" --locations-csv "docs/locations.csv"
+```
+
+- Verify the DB has data (row counts + min/max timestamps per location):
+
+```powershell
+python -m ml_engine.ingestion.verify_db --db-url "sqlite:///stormcast.db"
+```
+
+- Train a single global/master model from the DB (time-based split, past-only features; pooled across the provided locations):
 
 ```powershell
 python -m ml_engine.training.train --db-url "sqlite:///stormcast.db" --location-ids "1,2,3,4,5" --start "2024-01-01T00:00:00Z" --end "2024-01-10T00:00:00Z" --artifacts-dir "ml_engine/artifacts"
+```
+
+- Retrain on the larger window after ingestion:
+
+```powershell
+python -m ml_engine.training.train --db-url "sqlite:///stormcast.db" --location-ids "1,2,3,4,5" --start "2025-07-01T00:00:00Z" --end "2026-01-01T00:00:00Z" --artifacts-dir "ml_engine/artifacts"
 ```
 
 - Verify artifacts and metadata:
@@ -63,6 +91,12 @@ python -m ml_engine.artifacts.verify_artifacts --artifacts-dir "ml_engine/artifa
 
 ```powershell
 python -m ml_engine.evaluation.evaluate --db-url "sqlite:///stormcast.db" --location-ids "1,2,3,4,5" --start "2024-01-01T00:00:00Z" --end "2024-01-10T00:00:00Z" --horizon 60 --md-path "docs/ml_report.md" --json-path "ml_engine/artifacts/metrics.json"
+```
+
+- Evaluate on the larger window:
+
+```powershell
+python -m ml_engine.evaluation.evaluate --db-url "sqlite:///stormcast.db" --location-ids "1,2,3,4,5" --start "2025-07-01T00:00:00Z" --end "2026-01-01T00:00:00Z" --horizon 120 --md-path "docs/ml_report.md" --json-path "ml_engine/artifacts/metrics.json"
 ```
 
 - Run tests:

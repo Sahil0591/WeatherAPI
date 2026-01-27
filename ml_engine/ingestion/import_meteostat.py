@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import csv
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
 
@@ -27,6 +28,32 @@ DEFAULT_LOCATIONS: List[Location] = [
     Location(4, "Birmingham", 52.4862, -1.8904),
     Location(5, "Glasgow", 55.8642, -4.2518),
 ]
+
+
+def load_locations_csv(path: str) -> List[Location]:
+    """Load locations from a CSV file.
+
+    Expected header columns: id,name,lat,lon
+    """
+    locations: List[Location] = []
+    with open(path, "r", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        required = {"id", "name", "lat", "lon"}
+        if not reader.fieldnames or not required.issubset({c.strip() for c in reader.fieldnames}):
+            raise ValueError(f"locations CSV must include header columns: {sorted(required)}")
+        for row in reader:
+            if not row:
+                continue
+            loc = Location(
+                id=int(str(row.get("id", "")).strip()),
+                name=str(row.get("name", "")).strip(),
+                lat=float(str(row.get("lat", "")).strip()),
+                lon=float(str(row.get("lon", "")).strip()),
+            )
+            locations.append(loc)
+    if not locations:
+        raise ValueError("locations CSV contained no rows")
+    return locations
 
 
 def _to_utc(dt_like: str | dt.datetime) -> dt.datetime:
@@ -119,6 +146,7 @@ def import_meteostat(
     start: dt.datetime,
     end: dt.datetime,
     location_ids: Optional[Sequence[int]] = None,
+    locations: Optional[Sequence[Location]] = None,
 ) -> None:
     """Download Meteostat hourly data for selected locations and upsert into DB.
 
@@ -131,7 +159,9 @@ def import_meteostat(
     end : datetime
         End datetime (UTC-aware preferred).
     location_ids : Optional[Sequence[int]]
-        Subset of location IDs to import (default: all DEFAULT_LOCATIONS).
+        Subset of location IDs to import (default: all locations).
+    locations : Optional[Sequence[Location]]
+        Optional explicit locations to use instead of DEFAULT_LOCATIONS.
     """
     # Lazy import to avoid hard dependency for unit tests; use lowercase Meteostat APIs
     try:
@@ -159,8 +189,9 @@ def import_meteostat(
     engine = create_engine(db_url, future=True)
     create_tables(engine)
 
+    pool = list(locations) if locations is not None else DEFAULT_LOCATIONS
     selected: List[Location] = [
-        loc for loc in DEFAULT_LOCATIONS
+        loc for loc in pool
         if location_ids is None or loc.id in set(location_ids)
     ]
 
@@ -212,6 +243,11 @@ def _parse_args() -> argparse.Namespace:
         default="",
         help="Comma-separated location IDs to import (default: all)",
     )
+    p.add_argument(
+        "--locations-csv",
+        default="",
+        help="Optional CSV file with columns id,name,lat,lon to define locations (default: built-in list)",
+    )
     return p.parse_args()
 
 
@@ -220,7 +256,8 @@ def main() -> None:
     ids = [int(x) for x in args.location_ids.split(",") if x.strip()] or None
     start = _to_utc(args.start)
     end = _to_utc(args.end)
-    import_meteostat(args.db_url, start, end, ids)
+    locs = load_locations_csv(args.locations_csv) if args.locations_csv else None
+    import_meteostat(args.db_url, start, end, ids, locations=locs)
 
 
 if __name__ == "__main__":

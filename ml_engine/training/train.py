@@ -176,13 +176,15 @@ def train_models(cfg: TrainConfig) -> dict:
         pass
 
     # Regressor: train only on rows where future rain occurs
-    rain_mask_tr = (y_reg.iloc[: len(Xc_tr)] > 0.0)
-    rain_mask_va = (y_reg.iloc[len(Xc_tr) :] > 0.0)
+    y_reg_tr = y_reg.loc[Xc_tr.index]
+    y_reg_va = y_reg.loc[Xc_va.index]
+    rain_mask_tr = (y_reg_tr > 0.0)
+    rain_mask_va = (y_reg_va > 0.0)
 
-    Xr_tr = Xc_tr[rain_mask_tr]
-    yr_tr = y_reg.iloc[: len(Xc_tr)][rain_mask_tr]
-    Xr_va = Xc_va[rain_mask_va]
-    yr_va = y_reg.iloc[len(Xc_tr) :][rain_mask_va]
+    Xr_tr = Xc_tr.loc[rain_mask_tr]
+    yr_tr = y_reg_tr.loc[rain_mask_tr]
+    Xr_va = Xc_va.loc[rain_mask_va]
+    yr_va = y_reg_va.loc[rain_mask_va]
 
     reg = _choose_regressor()
     if len(Xr_tr):
@@ -220,6 +222,7 @@ def train_models(cfg: TrainConfig) -> dict:
 
     metadata = {
         "model_name": "stormcast",
+        "global_model": True,
         "model_version": model_version,
         "created_at_utc": created_at_utc,
         "horizons_min": list(cfg.horizons_min),
