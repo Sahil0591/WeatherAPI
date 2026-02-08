@@ -159,7 +159,9 @@ class StormcastModel:
                 X_reg_in = pd.DataFrame([x_arr], columns=self.feature_columns)
             except Exception:
                 X_reg_in = x_arr.reshape(1, -1)
-        amt = float(np.asarray(self.reg.predict(X_reg_in)).ravel()[0])
+        # NOTE: the regressor is trained on "raining" rows only in ml_engine.training.train,
+        # so its output is best interpreted as E[precip_mm | rain].
+        amt_cond_rain = float(np.asarray(self.reg.predict(X_reg_in)).ravel()[0])
 
         # Heuristic bounds using RMSE estimate when available; otherwise proportional
         rmse = None
@@ -168,10 +170,13 @@ class StormcastModel:
         except Exception:
             rmse = None
         if rmse is None or not np.isfinite(rmse):
-            rmse = max(0.1, abs(amt) * 0.5)
+            rmse = max(0.1, abs(amt_cond_rain) * 0.5)
         z90 = 1.2815515655446004  # ~N(0,1) 90th percentile
-        p10 = max(0.0, amt - z90 * rmse)
-        p90 = max(0.0, amt + z90 * rmse)
+        # Convert conditional amount bounds to unconditional expected bounds via p_rain.
+        # This is an approximation but makes `rain_mm` comparable to observed precip.
+        amt_expected = float(min(max(p, 0.0), 1.0)) * float(max(0.0, amt_cond_rain))
+        p10 = float(min(max(p, 0.0), 1.0)) * max(0.0, amt_cond_rain - z90 * rmse)
+        p90 = float(min(max(p, 0.0), 1.0)) * max(0.0, amt_cond_rain + z90 * rmse)
 
         preds: List[Dict[str, Any]] = []
         for minutes in horizons_min:
@@ -180,7 +185,7 @@ class StormcastModel:
             preds.append({
                 "minutes": int(minutes),
                 "p_rain": float(min(max(p, 0.0), 1.0)),
-                "rain_mm": float(max(0.0, amt)),
+                "rain_mm": float(amt_expected),
                 "rain_mm_p10": float(p10),
                 "rain_mm_p90": float(p90),
             })

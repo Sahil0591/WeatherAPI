@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     :root {
       --bg: #0f172a; /* slate-900 */
@@ -20,23 +21,55 @@
       margin: 0; padding: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
       background: linear-gradient(145deg, #0f172a 0%, #0b1020 100%);
       color: var(--text);
+      min-height: 100vh;
     }
-    header { padding: 24px; display: flex; align-items: center; justify-content: space-between; }
-    header h1 { margin: 0; font-size: 18px; letter-spacing: 0.4px; }
-    .container { max-width: 960px; margin: 0 auto; padding: 24px; }
-    .card { background: var(--panel); border: 1px solid #1f2937; border-radius: 12px; padding: 16px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    label { font-size: 12px; color: var(--muted); }
-    input, select { width: 100%; padding: 10px 12px; margin-top: 6px; border-radius: 8px; border: 1px solid #334155; background: #0b1220; color: var(--text); }
-    button { padding: 10px 14px; border-radius: 8px; border: 0; background: var(--accent); color: #032b30; font-weight: 600; cursor: pointer; }
+    header { padding: 32px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { margin: 0; font-size: 20px; letter-spacing: 0.4px; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 32px; }
+    .card { background: var(--panel); border: 1px solid #1f2937; border-radius: 12px; padding: 28px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    label { 
+      font-size: 13px; 
+      color: var(--muted); 
+      display: block; 
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    input, select { 
+      width: 100%; 
+      padding: 12px 16px; 
+      border-radius: 8px; 
+      border: 1px solid #334155; 
+      background: #0b1220; 
+      color: var(--text);
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    button { 
+      padding: 12px 20px; 
+      border-radius: 8px; 
+      border: 0; 
+      background: var(--accent); 
+      color: #032b30; 
+      font-weight: 600; 
+      cursor: pointer;
+      font-size: 14px;
+      transition: opacity 0.2s;
+    }
+    button:hover:not(:disabled) { opacity: 0.9; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .actions { display: flex; gap: 8px; margin-top: 12px; }
-    .section { margin-top: 20px; }
+    .actions { display: flex; gap: 12px; margin-top: 20px; }
+    .section { margin-top: 24px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-    .pill { display: inline-block; padding: 4px 8px; border-radius: 999px; border: 1px solid #334155; margin-right: 6px; font-size: 12px; }
-    .footer { margin-top: 24px; font-size: 12px; color: var(--muted); }
-    .row { display: flex; align-items: center; justify-content: space-between; margin: 6px 0; }
+    .pill { display: inline-block; padding: 6px 12px; border-radius: 999px; border: 1px solid #334155; margin-right: 6px; font-size: 13px; }
+    .footer { margin-top: 32px; padding-top: 24px; font-size: 13px; color: var(--muted); border-top: 1px solid #1f2937; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin: 10px 0; padding: 8px 0; }
     .error { color: #fca5a5; }
+    h3 { margin: 0 0 20px 0; font-size: 16px; font-weight: 600; color: var(--accent); }
   </style>
 </head>
 <body>
@@ -49,11 +82,11 @@
       <div class="grid">
         <div style="grid-column: span 2;">
           <label>Place or City</label>
-          <div style="display:flex; gap:8px; align-items:center;">
+          <div style="display:flex; gap:12px; align-items:center;">
             <input id="place" type="text" placeholder="e.g. London, UK" style="flex:1;" />
             <button id="btnSearch" type="button">Search</button>
           </div>
-          <div id="placeResults" class="section" style="font-size:12px; color: var(--muted);"></div>
+          <div id="placeResults" class="section" style="font-size:13px; color: var(--muted); line-height:1.6;"></div>
         </div>
         <div>
           <label>Latitude</label>
@@ -79,10 +112,14 @@
       <div id="status" class="section"></div>
     </div>
 
+
     <div class="section grid">
       <div class="card">
         <h3>Predictions</h3>
         <div id="predictions"></div>
+        <div id="chartContainer" style="position: relative; height: 220px; margin-top: 24px;">
+          <canvas id="rainChart"></canvas>
+        </div>
       </div>
       <div class="card">
         <h3>Explain</h3>
@@ -110,16 +147,94 @@
       html += `<div class='row'><span>Model</span><span class='mono'>${model.name} ${model.version}</span></div>`;
       html += `<div class='row'><span>Generated</span><span class='mono'>${data.generated_at}</span></div>`;
       html += `<div class='row'><span>Horizons</span><span class='mono'>${(data.horizons_min||[]).join(', ')}</span></div>`;
-      html += `<hr/>`;
+      html += `<hr style="border:0; border-top:1px solid #1f2937; margin: 16px 0;"/>`;
       preds.forEach(p => {
-        html += `<div class='row'><span>${p.minutes} min</span><span class='mono'>p_rain=${(p.p_rain*100).toFixed(1)}% • rain=${p.rain_mm.toFixed(2)}mm [${p.rain_mm_p10.toFixed(2)}..${p.rain_mm_p90.toFixed(2)}]</span></div>`;
+        html += `<div class='row'><span style="font-weight:500;">${p.minutes} min</span><span class='mono' style="font-size:13px;">p_rain=${(p.p_rain*100).toFixed(1)}% • rain=${p.rain_mm.toFixed(2)}mm [${p.rain_mm_p10.toFixed(2)}..${p.rain_mm_p90.toFixed(2)}]</span></div>`;
       });
       predEl.innerHTML = html || '<em>No predictions</em>';
+      
+      // Chart rendering - properly destroy and recreate
+      if (window.rainChart && typeof window.rainChart.destroy === 'function') {
+        window.rainChart.destroy();
+        window.rainChart = null;
+      }
+      
+      // Recreate the container and canvas
+      const chartContainer = document.getElementById('chartContainer');
+      chartContainer.innerHTML = '<canvas id="rainChart"></canvas>';
+      
+      const ctx = document.getElementById('rainChart').getContext('2d');
+      const labels = preds.map(p => `${p.minutes} min`);
+      const rain = preds.map(p => p.rain_mm);
+      const p10 = preds.map(p => p.rain_mm_p10);
+      const p90 = preds.map(p => p.rain_mm_p90);
+
+      window.rainChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Rain (mm)',
+              data: rain,
+              backgroundColor: 'rgba(34, 211, 238, 0.7)',
+              borderColor: 'rgba(34, 211, 238, 1)',
+              borderWidth: 1
+            },
+            {
+              label: 'p10',
+              data: p10,
+              type: 'line',
+              borderColor: 'rgba(16, 185, 129, 0.7)',
+              fill: false,
+              pointRadius: 3
+            },
+            {
+              label: 'p90',
+              data: p90,
+              type: 'line',
+              borderColor: 'rgba(239, 68, 68, 0.7)',
+              fill: false,
+              pointRadius: 3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { 
+            legend: { 
+              display: true,
+              labels: {
+                color: '#e5e7eb',
+                padding: 12,
+                font: { size: 12 }
+              }
+            } 
+          },
+          scales: { 
+            y: { 
+              beginAtZero: true, 
+              title: { display: true, text: 'mm', color: '#94a3b8' },
+              ticks: { color: '#94a3b8' },
+              grid: { color: '#1f2937' }
+            },
+            x: {
+              ticks: { color: '#94a3b8' },
+              grid: { color: '#1f2937' }
+            }
+          }
+        }
+      });
     }
     function renderExplain(data) {
-      const top = data.top_factors || []; let html = `<div class='row'><span>Summary</span><span class='mono'>${data.summary||''}</span></div>`;
-      html += `<hr/>`;
-      top.forEach(t => { html += `<div class='row'><span>${t.feature||t.name}</span><span class='mono'>${t.direction||''} • ${(t.strength||t.contribution||0).toFixed(2)}</span></div>`; });
+      const top = data.top_factors || []; 
+      let html = `<div style="margin-bottom: 16px;">
+                    <div style="font-size:13px; color: var(--muted); margin-bottom: 8px; font-weight: 500;">Summary</div>
+                    <div class='mono' style="font-size:13px; line-height: 1.6; padding: 12px; background: #0b1220; border-radius: 6px; border: 1px solid #1f2937;">${data.summary||''}</div>
+                  </div>`;
+      html += `<hr style="border:0; border-top:1px solid #1f2937; margin: 16px 0;"/>`;
+      top.forEach(t => { html += `<div class='row'><span style="font-weight:500;">${t.feature||t.name}</span><span class='mono' style="font-size:13px;">${t.direction||''} • ${(t.strength||t.contribution||0).toFixed(2)}</span></div>`; });
       explEl.innerHTML = html || '<em>No factors</em>';
     }
 

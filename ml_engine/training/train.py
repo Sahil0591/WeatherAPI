@@ -246,7 +246,11 @@ def train_models(cfg: TrainConfig) -> dict:
             "start": cfg.start_dt.isoformat(),
             "end": cfg.end_dt.isoformat(),
         },
-        "target_definition": "rain = precip_mm > 0.0; regression target = precip_mm shifted forward by horizon steps",
+        "target_definition": (
+            "rain = precip_mm > 0.0; "
+            "regressor target = precip_mm shifted forward by horizon steps, trained on raining rows only; "
+            "inference may report expected precip as p_rain * E[precip_mm | rain]"
+        ),
         "metrics_summary": metrics,
         # Back-compat keys for consumers
         "features": list(X.columns),
@@ -282,7 +286,12 @@ def _parse_args() -> TrainConfig:
     horizons_min = [int(x) for x in args.horizons.split(",") if x.strip()]
 
     def to_utc(s: str) -> dt.datetime:
+        s = s.strip()
+        # Allow common UTC suffix 'Z'
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
         d = dt.datetime.fromisoformat(s)
+        # Treat naive timestamps as UTC
         return d if d.tzinfo is not None else d.replace(tzinfo=dt.timezone.utc)
 
     cfg = TrainConfig(

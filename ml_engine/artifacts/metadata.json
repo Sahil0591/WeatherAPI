@@ -1,8 +1,8 @@
 {
   "model_name": "stormcast",
   "global_model": true,
-  "model_version": "2026-01-27T13:27:41.010244+00:00",
-  "created_at_utc": "2026-01-27T13:27:41.010244+00:00",
+  "model_version": "2026-02-08T05:01:38.396974+00:00",
+  "created_at_utc": "2026-02-08T05:01:38.396974+00:00",
   "horizons_min": [
     15,
     30,
@@ -37,7 +37,7 @@
     "start": "2025-07-01T00:00:00+00:00",
     "end": "2026-01-01T00:00:00+00:00"
   },
-  "target_definition": "rain = precip_mm > 0.0; regression target = precip_mm shifted forward by horizon steps",
+  "target_definition": "rain = precip_mm > 0.0; regressor target = precip_mm shifted forward by horizon steps, trained on raining rows only; inference may report expected precip as p_rain * E[precip_mm | rain]",
   "metrics_summary": {
     "clf_accuracy": 0.88140589569161,
     "clf_roc_auc": 0.939794605208326,
